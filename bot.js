@@ -2,7 +2,6 @@ require('dotenv').config();
 const http = require('http');
 const { Bot, InlineKeyboard, webhookCallback } = require('grammy');
 const db = require('./db');
-const ai = require('./ai');
 
 const token = process.env.BOT_TOKEN;
 if (!token) {
@@ -36,7 +35,6 @@ async function pingKeepAlive() {
     lastPingTime = Date.now();
     if (res.ok) {
       lastPingStatus = `200 OK (${ms}ms)`;
-      console.log(`💓 [Keep-Alive Ping] 200 OK (${ms}ms) lúc ${new Date().toLocaleTimeString('vi-VN')}`);
     } else {
       lastPingStatus = `${res.status} (${ms}ms)`;
     }
@@ -74,7 +72,7 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({
       messagesCount: db.messages.length,
       topics: db.topics,
-      recentMessages: db.messages.slice(-10)
+      messages: db.messages.slice(-15)
     }, null, 2));
   }
 
@@ -86,7 +84,7 @@ const server = http.createServer(async (req, res) => {
     });
     return res.end(JSON.stringify({
       status: 'ok',
-      service: 'Telegram Smart Q&A & Deep-Link Traceability Bot',
+      service: 'Telegram Hashtag & Deep-Link Traceability Bot',
       mode: USE_WEBHOOK ? 'webhook' : 'polling',
       uptime: Math.floor(process.uptime()),
       lastPingTime,
@@ -105,7 +103,7 @@ const server = http.createServer(async (req, res) => {
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <title>Nexus Smart Q&A Bot 24/7</title>
+  <title>Nexus Smart Hashtag Bot 24/7</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 40px 20px; text-align: center; }
     .card { max-width: 650px; margin: 0 auto; background: #1e293b; border-radius: 16px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #334155; }
@@ -118,12 +116,12 @@ const server = http.createServer(async (req, res) => {
 </head>
 <body>
   <div class="card">
-    <h1>🤖 Nexus Smart Q&A Bot</h1>
-    <p style="color: #94a3b8; margin: 0 0 15px 0;">Trợ lý Truy vấn Nguồn gốc Thông tin & Deep Link Topic 24/7</p>
+    <h1>🤖 Nexus Hashtag & Topic Traceability Bot</h1>
+    <p style="color: #94a3b8; margin: 0 0 15px 0;">Truy xuất chính xác tin nhắn theo Hashtag & Deep Link Topic 24/7</p>
     <div class="badge">● ONLINE 24/7 (${USE_WEBHOOK ? 'Webhook Mode' : 'Polling Mode'})</div>
     <div class="stats">
-      <div><div class="stat-val">${stats.total}</div><div class="stat-lbl">Tin nhắn thực tế</div></div>
-      <div><div class="stat-val">${stats.chats}</div><div class="stat-lbl">Nhóm theo dõi</div></div>
+      <div><div class="stat-val">${stats.total}</div><div class="stat-lbl">Tin nhắn nhóm</div></div>
+      <div><div class="stat-val">${stats.chats}</div><div class="stat-lbl">Nhóm dự án</div></div>
       <div><div class="stat-val">${stats.topicsCount}</div><div class="stat-lbl">Topics ghi nhận</div></div>
     </div>
   </div>
@@ -133,11 +131,12 @@ const server = http.createServer(async (req, res) => {
 });
 
 // ==========================================
-// MIDDLEWARE: GHI NHỚ MỌI TIN NHẮN TỪ NHÓM / KÊNH
+// MIDDLEWARE: CHỈ GHI NHỚ TIN NHẮN TỪ NHÓM / KÊNH
+// TUYỆT ĐỐI KHÔNG LƯU TIN NHẮN TỪ CHAT RIÊNG (DM)
 // ==========================================
 bot.use(async (ctx, next) => {
   const msg = ctx.message || ctx.channel_post;
-  if (msg) {
+  if (msg && msg.chat && (msg.chat.type === 'supergroup' || msg.chat.type === 'group' || msg.chat.type === 'channel')) {
     db.addMessage(msg);
   }
   await next();
@@ -158,13 +157,13 @@ bot.command(['settopic', 'topic', 'nametopic'], async (ctx) => {
 
   if (!topicName) {
     const current = db.getTopicName(ctx.chat.id, threadId) || `Topic #${threadId}`;
-    return ctx.reply(`🏷️ Tên hiện tại của Topic này là: *"${current}"*\n👉 Để đổi tên, gõ: \`/settopic Tên_Mới\` (Ví dụ: \`/settopic Vật liệu & Hoàn thiện\`)`, {
+    return ctx.reply(`🏷️ Tên hiện tại của Topic này là: *"${current}"*\n👉 Để đổi tên, gõ: \`/settopic Tên_Mới\` (Ví dụ: \`/settopic Cửa Nhôm & Vật Liệu\`)`, {
       parse_mode: 'Markdown'
     });
   }
 
   db.saveTopicName(ctx.chat.id, threadId, topicName);
-  await ctx.reply(`✅ Đã ghi nhận tên Topic: *"${topicName}"* cho luồng này! Từ bây giờ bot sẽ nhận diện chính xác tên Topic này khi truy vấn.`, {
+  await ctx.reply(`✅ Đã lưu tên Topic: *"${topicName}"*! Từ bây giờ bot sẽ hiển thị đúng tên Topic này khi bạn tra cứu.`, {
     parse_mode: 'Markdown'
   });
 });
@@ -173,40 +172,38 @@ bot.command(['settopic', 'topic', 'nametopic'], async (ctx) => {
 // CÁC LỆNH CƠ BẢN (/start, /help, /stats)
 // ==========================================
 bot.command(['start', 'help'], async (ctx) => {
-  const isPrivate = ctx.chat.type === 'private';
+  const guide = `🤖 *TRỢ LÝ TRUY XUẤT TIN NHẮN THEO HASHTAG & TOPIC*
 
-  const guide = isPrivate ? `🤖 *TRỢ LÝ TRUY VẤN NGUỒN GỐC THÔNG TIN (SMART Q&A + DEEP LINK)*
+Xin chào *${ctx.from.first_name}*! Bot chuyên tìm kiếm và xuất đầy đủ nội dung tin nhắn chứa đúng các Hashtag được yêu cầu.
 
-Xin chào *${ctx.from.first_name}*! Đây là *khung chat riêng 1-1* của bạn với Bot.
+🎯 *CÁCH TRA CỨU:*
+Bạn chỉ cần gõ một hoặc nhiều hashtag cần tìm, ví dụ:
+👉 \`#hop\`
+👉 \`#cuanhom\`
+👉 \`#cuanhom #baogia\`
+👉 \`#quyhoach #pheduyet\`
 
-Bạn có thể vào thẳng đây để hỏi và truy vấn bất kỳ thông tin nào đã được gửi lên các nhóm hoặc Topic. Tôi sẽ trả lời đầy đủ:
-• 📍 *Gửi ở đâu:* Nhóm nào, Topic nào cụ thể.
-• ⏰ *Gửi ngày nào:* Giờ và ngày gửi cụ thể.
-• 👤 *Ai là người gửi:* Sếp, đối tác hay KTS nào.
-• 📝 *Nội dung cụ thể thế nào:* Tóm tắt súc tích & phân tích trạng thái (Đã chốt hay Đang đề xuất).
-• 🔗 *Deep Link Topic:* Nút bấm nhảy thẳng vào đúng tin nhắn trong Topic để xem lại file/ảnh.
+✨ *KẾT QUẢ TRẢ VỀ ĐẦY ĐỦ BAO GỒM:*
+1. 📍 *Gửi ở đâu:* Tên Nhóm + Tên Topic cụ thể.
+2. ⏰ *Gửi ngày nào:* Giờ và ngày gửi cụ thể.
+3. 📝 *Nội dung tin nhắn:* Toàn bộ nội dung cụ thể của tin nhắn gốc.
+4. 📎 *Tệp đính kèm:* Tên bản vẽ/ảnh nếu có.
+5. 🔗 *Nút Deep Link:* Nhảy thẳng vào đúng tin nhắn trong Topic đó trên Telegram.
 
-💡 *Lưu ý quan trọng:*
-- Để bot ghi nhớ được các tin nhắn trong nhóm, bạn cần **Thêm bot vào nhóm và cấp quyền Admin (Quản trị viên)**.
-- Telegram không cho phép bot đọc lại các tin nhắn cũ trước khi bot được thêm vào nhóm.
-- Bạn có thể gõ \`/settopic Tên_Topic\` ngay trong Topic của nhóm để đặt tên Topic chuẩn xác.`
-: 
-`🤖 *TRỢ LÝ TRUY VẤN NGUỒN GỐC (SMART Q&A + DEEP LINK)*
+*(Đã lược bỏ phần người gửi, bỏ trạng thái và bỏ trích dẫn theo đúng yêu cầu)*.
 
-Xin chào cả nhà! Tôi đang ghi nhớ các trao đổi, bản vẽ và quyết định trong nhóm.
-
-🎯 *Cách dùng trong nhóm:*
-• \`/topic Tên_Topic\`: Đặt tên định danh cho Topic này (ví dụ: \`/topic Cửa Nhôm & Vật Liệu\`).
-• \`@${bot.botInfo.username} <câu hỏi>\`: Hỏi đáp và truy xuất thông tin.
-• Hoặc bạn có thể **nhắn tin riêng 1-1 với bot** để tra cứu mọi lúc mọi nơi!`;
+⚠️ *Lưu ý quan trọng:*
+- Để bot ghi nhớ được tin nhắn, hãy **thêm bot vào nhóm và cấp quyền Admin**.
+- Telegram chỉ cho phép bot nhận các tin nhắn được gửi *sau khi bot vào nhóm*.
+- Trong Topic của nhóm, bạn có thể gõ \`/topic Tên_Topic\` để đặt tên nhận diện cho Topic.`;
 
   await ctx.reply(guide, { parse_mode: 'Markdown' });
 });
 
 bot.command('stats', async (ctx) => {
   const stats = db.getStats();
-  await ctx.reply(`📊 *THỐNG KÊ DỮ LIỆU ĐÃ GHI NHỚ THỰC TẾ:*
-- 💬 Tổng số tin nhắn đã lưu: *${stats.total}*
+  await ctx.reply(`📊 *THỐNG KÊ DỮ LIỆU NHÓM ĐÃ GHI NHỚ:*
+- 💬 Số tin nhắn nhóm đã lưu: *${stats.total}*
 - 👥 Số nhóm theo dõi: *${stats.chats}*
 - 🏷️ Số Topic có tên định danh: *${stats.topicsCount}*
 - 📁 Số tin nhắn có tệp / hình ảnh: *${stats.withMedia}*`, { parse_mode: 'Markdown' });
@@ -218,15 +215,15 @@ bot.command('stats', async (ctx) => {
 bot.command(['ask', 'hoi', 'tim', 'truyxuat'], async (ctx) => {
   const question = ctx.match?.trim();
   if (!question) {
-    return ctx.reply('💡 Bạn hãy nhập câu hỏi sau lệnh `/ask`. Ví dụ:\n`/ask Cửa nhôm kính gửi lên topic nào, ngày nào?`', {
+    return ctx.reply('💡 Bạn hãy nhập hashtag hoặc nội dung cần tìm sau lệnh `/ask`. Ví dụ:\n`/ask #hop`\n`/ask #cuanhom #chot`', {
       parse_mode: 'Markdown'
     });
   }
-  await handleUserQuestion(ctx, question);
+  await handleHashtagSearch(ctx, question);
 });
 
 // ==========================================
-// BẮT SỰ KIỆN CHAT RIÊNG (DM) HOẶC MENTION
+// BẮT SỰ KIỆN CHAT RIÊNG (DM) HOẶC MENTION TRONG NHÓM
 // ==========================================
 bot.on('message:text', async (ctx) => {
   const text = ctx.message.text.trim();
@@ -234,7 +231,7 @@ bot.on('message:text', async (ctx) => {
 
   // 1. Nhắn tin trong Chat Riêng 1-1 với Bot
   if (ctx.chat.type === 'private' && !text.startsWith('/')) {
-    return handleUserQuestion(ctx, text);
+    return handleHashtagSearch(ctx, text);
   }
 
   // 2. Mention @bot trong nhóm
@@ -242,142 +239,137 @@ bot.on('message:text', async (ctx) => {
   if (mentionPattern.test(text)) {
     const cleanedQuestion = text.replace(mentionPattern, '').trim();
     if (cleanedQuestion) {
-      return handleUserQuestion(ctx, cleanedQuestion);
+      return handleHashtagSearch(ctx, cleanedQuestion);
     } else {
-      return ctx.reply(`Dạ tôi nghe đây! Bạn hãy nhập câu hỏi cần truy vấn nhé.`, { parse_mode: 'Markdown' });
+      return ctx.reply(`Dạ tôi nghe! Hãy gửi hashtag bạn cần tra cứu (ví dụ: \`#hop\` hoặc \`#cuanhom\`).`, { parse_mode: 'Markdown' });
     }
   }
 
   // 3. Reply tin nhắn của bot trong nhóm
   if (ctx.message.reply_to_message?.from?.id === bot.botInfo.id) {
     if (!text.startsWith('/')) {
-      return handleUserQuestion(ctx, text);
+      return handleHashtagSearch(ctx, text);
     }
   }
 });
 
 // ==========================================
-// HÀM XỬ LÝ TRUY VẤN NGUỒN GỐC THÔNG TIN
+// HÀM TRÍCH XUẤT HASHTAG TỪ CÂU HỎI
 // ==========================================
-async function handleUserQuestion(ctx, question) {
+function extractHashtags(query) {
+  // Tìm các từ có dấu #
+  const matched = query.match(/#[\p{L}\p{N}_]+/gu);
+  if (matched && matched.length > 0) {
+    return [...new Set(matched.map(t => t.toLowerCase()))];
+  }
+
+  // Nếu người dùng không gõ dấu #, tách từ khóa và coi như hashtag
+  const cleaned = query.replace(/[?.,!:]/g, ' ').trim();
+  const stopwords = ['tìm', 'xem', 'hỏi', 'cho', 'có', 'thông', 'tin', 'về', 'liên', 'quan', 'đến', 'nội', 'dung', 'là', 'gì', 'hôm', 'nào', 'ở', 'đâu'];
+  const words = cleaned.split(/\s+/).filter(w => w.length > 1 && !stopwords.includes(w.toLowerCase()));
+
+  return [...new Set(words.map(w => w.startsWith('#') ? w.toLowerCase() : `#${w.toLowerCase()}`))];
+}
+
+// ==========================================
+// HÀM TÌM KIẾM VÀ TRẢ VỀ CHÍNH XÁC THEO HASHTAG
+// ==========================================
+async function handleHashtagSearch(ctx, query) {
   try {
     await ctx.replyWithChatAction('typing');
 
-    const isPrivate = ctx.chat.type === 'private';
-    const messages = db.getRecentMessages(isPrivate ? null : ctx.chat.id, 150);
-
-    // Nếu kho tin nhắn thực tế hoàn toàn trống
-    if (!messages || messages.length === 0) {
-      return ctx.reply(`⚠️ *CHƯA CÓ DỮ LIỆU TIN NHẮN THỰC TẾ TRONG HỆ THỐNG*
-
-Bot chưa ghi nhận tin nhắn nào từ nhóm Telegram của bạn.
-
-👉 *Để bắt đầu ghi nhớ và truy xuất:*
-1. Hãy thêm bot \`@${bot.botInfo.username}\` vào nhóm dự án của bạn.
-2. Cấp quyền **Admin (Quản trị viên)** cho bot để Telegram cho phép bot đọc tin nhắn.
-3. Gửi thử một tin nhắn hoặc tệp bản vẽ vào một Topic bất kỳ.
-4. Sau đó quay lại hỏi bot, bot sẽ truy xuất nguồn gốc chính xác 100%!
-
-*(Lưu ý: Telegram không hỗ trợ đọc lại các tin nhắn cũ đã gửi trước khi bot vào nhóm)*.`, {
+    const tags = extractHashtags(query);
+    if (!tags || tags.length === 0) {
+      return ctx.reply('💡 Vui lòng nhập hashtag bạn muốn tìm kiếm (ví dụ: `#hop`, `#cuanhom`, `#quyhoach`).', {
         parse_mode: 'Markdown',
         reply_to_message_id: ctx.message.message_id
       });
     }
 
-    // Gửi câu hỏi đến Gemini AI
-    const aiResult = await ai.answerQuestion(question, messages);
+    const isPrivate = ctx.chat.type === 'private';
+    // Tìm kiếm trong toàn bộ nhóm nếu đang chat riêng, hoặc trong nhóm hiện tại nếu ở trong nhóm
+    const results = db.searchByHashtags(tags, isPrivate ? null : ctx.chat.id);
 
-    // Nếu không tìm thấy thông tin phù hợp
-    if (!aiResult.found) {
-      return ctx.reply(`🔍 *KẾT QUẢ TRUY VẤN NGUỒN GỐC*
+    // TRƯỜNG HỢP 1: Kho dữ liệu nhóm chưa có tin nhắn nào
+    if (db.messages.length === 0) {
+      return ctx.reply(`⚠️ *CHƯA CÓ TIN NHẮN TỪ NHÓM NÀO ĐƯỢC GHI NHẬN*
 
-⚠️ *Không tìm thấy thông tin phù hợp trong lịch sử tin nhắn đã ghi nhận.*
+Hiện tại bot chưa ghi nhận được tin nhắn nào từ các nhóm/topic dự án của bạn.
+
+👉 *Để bot có thể tìm kiếm theo hashtag:*
+1. Hãy thêm bot \`@${bot.botInfo.username}\` vào nhóm dự án của bạn.
+2. Cấp quyền **Admin (Quản trị viên)** cho bot để Telegram cho phép bot đọc tin nhắn nhóm.
+3. Khi bạn hoặc thành viên gửi tin nhắn có gắn hashtag (ví dụ: \`#hop\`, \`#cuanhom\`) vào Topic, bot sẽ tự động ghi nhớ ngay lập tức.
+4. Sau đó vào đây gõ \`#hop\`, bot sẽ lập tức trả về đầy đủ tin nhắn kèm nút nhảy thẳng vào Topic đó!
+
+*(Lưu ý: Telegram không hỗ trợ bot đọc lại các tin nhắn cũ đã gửi trước khi thêm bot)*.`, {
+        parse_mode: 'Markdown',
+        reply_to_message_id: ctx.message.message_id
+      });
+    }
+
+    // TRƯỜNG HỢP 2: Đã có tin nhắn nhóm nhưng không tìm thấy hashtag khớp
+    if (results.length === 0) {
+      return ctx.reply(`🔍 *KẾT QUẢ TÌM KIẾM HASHTAG*
+
+⚠️ Không tìm thấy tin nhắn nào có đủ các hashtag: \`${tags.join(' ')}\` trong lịch sử nhóm đã ghi nhận (${db.messages.length} tin nhắn).
 
 👉 *Gợi ý:*
-• Kiểm tra xem thông tin này có phải được gửi *trước khi thêm bot vào nhóm* không (bot chỉ đọc được tin nhắn từ khi tham gia nhóm).
-• Thử hỏi với từ khóa cụ thể hơn (ví dụ: tên người gửi hoặc tên tệp đính kèm).`, {
+• Hãy kiểm tra lại chính tả hashtag (ví dụ: \`#hop\`).
+• Đảm bảo tin nhắn mang hashtag đó được gửi vào nhóm *sau khi bot đã vào nhóm và có quyền Admin*.`, {
         parse_mode: 'Markdown',
         reply_to_message_id: ctx.message.message_id
       });
     }
 
-    // Trạng thái đã chốt hay đề xuất
-    let statusEmoji = '📌';
-    let statusText = aiResult.status || 'Chưa xác định';
-    if (statusText.toLowerCase().includes('chốt') || statusText.toLowerCase().includes('approved')) {
-      statusEmoji = '✅';
-      statusText = 'ĐÃ CHỐT CHÍNH THỨC';
-    } else if (statusText.toLowerCase().includes('đề xuất') || statusText.toLowerCase().includes('proposed')) {
-      statusEmoji = '💡';
-      statusText = 'MỚI CHỈ LÀ ĐỀ XUẤT / ĐANG BÀN THẢO';
-    }
-
-    // XUẤT KẾT QUẢ THEO ĐÚNG YÊU CẦU
-    let responseMsg = `🎯 *KẾT QUẢ TRUY VẤN NGUỒN GỐC*\n\n`;
-
-    // 1. GỬI Ở ĐÂU
-    responseMsg += `📍 *GỬI Ở ĐÂU:*\n`;
-    responseMsg += `🏢 *Nhóm:* \`${aiResult.chat_title || 'Nhóm Dự Án'}\`\n`;
-    responseMsg += `🏷️ *Topic:* \`${aiResult.topic_name || 'Kênh chung'}\`\n\n`;
-
-    // 2. GỬI NGÀY NÀO
-    responseMsg += `⏰ *GỬI NGÀY NÀO:*\n`;
-    responseMsg += `📅 \`${aiResult.date_formatted || 'Không xác định'}\`\n\n`;
-
-    // 3. AI LÀ NGƯỜI GỬI
-    responseMsg += `👤 *AI LÀ NGƯỜI GỬI:*\n`;
-    responseMsg += `*${aiResult.sender_name || 'Không rõ danh tính'}*\n\n`;
-
-    // 4. NỘI DUNG CỤ THỂ THẾ NÀO
-    responseMsg += `📝 *NỘI DUNG CỤ THỂ:*\n`;
-    responseMsg += `👉 ${aiResult.summary}\n`;
-    responseMsg += `${statusEmoji} *Trạng thái:* \`${statusText}\`\n`;
-
-    if (aiResult.file_name) {
-      responseMsg += `📎 *Tệp đính kèm:* \`${aiResult.file_name}\`\n`;
-    }
-    if (aiResult.evidence_quote) {
-      responseMsg += `💬 *Trích dẫn then chốt:* _"${aiResult.evidence_quote}"_\n`;
-    }
-
-    // Xây dựng Bàn phím Deep Link
-    const keyboard = new InlineKeyboard();
-    let hasLink = false;
-
-    if (aiResult.deep_link && aiResult.deep_link.startsWith('http')) {
-      const topicLabel = aiResult.topic_name ? ` [${aiResult.topic_name}]` : '';
-      keyboard.url(`👉 🚀 Mở tin nhắn trong Topic${topicLabel}`, aiResult.deep_link);
-      hasLink = true;
-    }
-
-    if (aiResult.additional_sources && Array.isArray(aiResult.additional_sources)) {
-      for (const src of aiResult.additional_sources) {
-        if (src.deep_link && src.deep_link.startsWith('http')) {
-          const roleText = src.role || 'Xem tin nhắn liên quan';
-          const senderInfo = src.sender_name ? ` - ${src.sender_name}` : '';
-          keyboard.row().url(`🔗 ${roleText}${senderInfo}`, src.deep_link);
-          hasLink = true;
-        }
-      }
-    }
-
-    const replyOptions = {
+    // TRƯỜNG HỢP 3: TÌM THẤY TIN NHẮN KHỚP ĐỦ HASHTAG
+    // Xuất đầy đủ tất cả các nội dung tin nhắn có đủ hashtag
+    // Bỏ phần ai là người gửi, bỏ trạng thái, bỏ trích dẫn then chốt theo đúng yêu cầu người dùng
+    await ctx.reply(`🎯 *TÌM THẤY ${results.length} TIN NHẮN CÓ ĐỦ HASHTAG:* \`${tags.join(' ')}\``, {
       parse_mode: 'Markdown',
       reply_to_message_id: ctx.message.message_id
-    };
+    });
 
-    if (hasLink) {
-      replyOptions.reply_markup = keyboard;
-      responseMsg += `\n🔗 *XEM LẠI TIN NHẮN GỐC TRONG TOPIC:*\nNhấn nút bên dưới để nhảy thẳng vào đúng Topic trên Telegram 👇`;
-    } else {
-      responseMsg += `\n🔗 *Tin nhắn gốc:* _(ID #${aiResult.message_id || 'N/A'})_`;
+    // Giới hạn tối đa 6 tin nhắn mới nhất để không spam chat
+    const displayList = results.slice(0, 6);
+
+    for (let i = 0; i < displayList.length; i++) {
+      const m = displayList[i];
+
+      let msgText = `📌 *KẾT QUẢ ${i + 1}/${results.length}:*\n\n`;
+
+      // 1. GỬI Ở ĐÂU
+      msgText += `📍 *GỬI Ở ĐÂU:*\n`;
+      msgText += `🏢 *Nhóm:* \`${m.chat_title}\`\n`;
+      msgText += `🏷️ *Topic:* \`${m.topic_name}\`\n\n`;
+
+      // 2. GỬI NGÀY NÀO
+      msgText += `⏰ *GỬI NGÀY NÀO:*\n`;
+      msgText += `📅 \`${m.date_formatted}\`\n\n`;
+
+      // 3. NỘI DUNG TIN NHẮN (Đưa đầy đủ nội dung tin nhắn gốc)
+      msgText += `📝 *NỘI DUNG TIN NHẮN:*\n`;
+      msgText += `${m.text}\n`;
+
+      if (m.file_name) {
+        msgText += `\n📎 *Tệp đính kèm:* \`${m.file_name}\`\n`;
+      }
+
+      // Xây dựng nút Deep Link nhảy thẳng vào đúng tin nhắn trong Topic
+      const keyboard = new InlineKeyboard();
+      if (m.deep_link && m.deep_link.startsWith('http')) {
+        keyboard.url('👉 🚀 Mở tin nhắn trong Topic', m.deep_link);
+      }
+
+      await ctx.reply(msgText, {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      });
     }
 
-    await ctx.reply(responseMsg, replyOptions);
-
   } catch (err) {
-    console.error('Lỗi khi truy vấn:', err);
-    await ctx.reply(`⚠️ Đã xảy ra lỗi khi truy vấn: ${err.message}`, {
+    console.error('Lỗi tìm kiếm hashtag:', err);
+    await ctx.reply(`⚠️ Đã xảy ra lỗi: ${err.message}`, {
       reply_to_message_id: ctx.message.message_id
     });
   }
@@ -392,16 +384,16 @@ async function startBot() {
     initKeepAlive();
 
     if (USE_WEBHOOK) {
-      console.log(`🚀 Đang cấu hình Webhook với Render: ${RENDER_EXTERNAL_URL}/webhook`);
+      console.log(`🚀 Cấu hình Webhook: ${RENDER_EXTERNAL_URL}/webhook`);
       try {
         await bot.api.setWebhook(`${RENDER_EXTERNAL_URL}/webhook`, {
           drop_pending_updates: true,
           allowed_updates: ['message', 'edited_message', 'channel_post']
         });
         const webhookInfo = await bot.api.getWebhookInfo();
-        console.log('✅ Webhook đã đăng ký thành công:', webhookInfo.url);
+        console.log('✅ Webhook đăng ký thành công:', webhookInfo.url);
       } catch (err) {
-        console.error('⚠️ Đăng ký Webhook thất bại, chuyển sang Polling:', err.message);
+        console.error('⚠️ Lỗi Webhook, chuyển sang Polling:', err.message);
         startPolling();
       }
     } else {
@@ -411,12 +403,12 @@ async function startBot() {
 }
 
 function startPolling() {
-  console.log('🤖 Đang khởi chạy bot ở chế độ Long Polling...');
+  console.log('🤖 Đang khởi chạy bot Polling...');
   bot.start({
     drop_pending_updates: true,
     allowed_updates: ['message', 'edited_message', 'channel_post'],
     onStart: (info) => {
-      console.log(`✅ BOT ĐANG CHẠY (POLLING): @${info.username}`);
+      console.log(`✅ BOT ĐANG CHẠY: @${info.username}`);
     }
   }).catch(async (err) => {
     console.warn('⚠️ Lỗi Polling:', err.message);
