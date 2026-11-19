@@ -51,7 +51,7 @@ class GeminiAIService {
           const errText = await res.text();
           console.warn(`[Gemini ${model}] Lỗi ${res.status}:`, errText.slice(0, 150));
           lastError = new Error(`Gemini ${model} ${res.status}`);
-          continue; // thử model tiếp theo
+          continue;
         }
 
         const data = await res.json();
@@ -75,47 +75,58 @@ class GeminiAIService {
     if (!messages || messages.length === 0) {
       return {
         found: false,
-        summary: 'Chưa có dữ liệu tin nhắn nào trong nhóm được ghi nhận.',
+        summary: 'Chưa có dữ liệu tin nhắn nào trong các nhóm được ghi nhận.',
         status: 'Chưa có thông tin',
+        chat_title: 'Không xác định',
+        topic_name: 'Không xác định',
         sender_name: 'Hệ thống',
         date_formatted: 'Chưa xác định',
         deep_link: null
       };
     }
 
-    // Định dạng lịch sử tin nhắn thành văn bản ngữ cảnh
-    const formattedHistory = messages.map((m, index) => {
-      return `[Tin #${m.message_id}] [Thời gian: ${m.date_formatted}] [Người gửi: ${m.sender_name}] [Topic: ${m.topic_name || 'Chung'}] [Tệp: ${m.file_name || (m.has_media ? 'Ảnh/Video' : 'Không')}]
+    // Định dạng lịch sử tin nhắn thành văn bản ngữ cảnh rõ ràng từng nhóm và topic
+    const formattedHistory = messages.map((m) => {
+      return `[Tin #${m.message_id}] [Nhóm: ${m.chat_title}] [Topic: ${m.topic_name || 'Kênh chung'}] [Thời gian: ${m.date_formatted}] [Người gửi: ${m.sender_name}] [Tệp: ${m.file_name || (m.has_media ? 'Ảnh/Video' : 'Không')}]
 Nội dung: ${m.text}
 Link: ${m.deep_link || ''}
 ---`;
     }).join('\n');
 
-    const systemInstruction = `Bạn là Trợ lý Hỏi đáp & Truy xuất nguồn gốc thông tin (Smart Q&A + Deep Link) cao cấp trong nhóm làm việc Telegram.
-Nhiệm vụ của bạn là đọc các tin nhắn được ghi nhận trong nhóm và trả lời câu hỏi của người dùng.
+    const systemInstruction = `Bạn là Trợ lý AI Hỏi đáp & Truy xuất nguồn gốc thông tin (Smart Q&A + Deep Link Traceability) chuyên nghiệp trong Telegram.
+Người dùng có thể hỏi bạn trong nhóm hoặc VÀO TRỰC TIẾP BOT CHAT 1-1 để truy vấn thông tin đã trao đổi ở các nhóm/topic.
 
-BẮT BUỘC ĐÁP ỨNG ĐỦ 4 YẾU TỐ SAU TRONG KẾT QUẢ:
-1. Nội dung tóm tắt: Nêu câu trả lời rõ ràng, súc tích và BẮT BUỘC chỉ rõ trạng thái là "Đã chốt" (đã thống nhất/duyệt) hay "Mới chỉ là đề xuất" (đang bàn thảo/chưa duyệt).
-2. Ai là người gửi: Tên đối tác/sếp/bạn gửi tin nhắn quyết định hoặc đưa ra thông tin.
-3. Gửi vào lúc nào: Ngày giờ cụ thể (dựa trên trường [Thời gian]).
-4. Nút/Link tin nhắn gốc: Trích xuất chính xác trường Link hoặc ID tin nhắn để tạo deep link nhảy thẳng vào tin nhắn xem file/ảnh.
+KHI TRẢ LỜI, BẠN BẮT BUỘC PHẢI CHỈ RA RÕ CÁC YẾU TỐ:
+1. GỬI Ở ĐÂU: Tên nhóm/dự án cụ thể và Tên Topic cụ thể (ví dụ: Nhóm "Dự Án Biệt Thự Thảo Điền", Topic "Vật liệu & Hoàn thiện").
+2. GỬI NGÀY NÀO: Ngày giờ cụ thể của tin nhắn (ví dụ: "16:45 ngày 17/11/2026").
+3. AI LÀ NGƯỜI GỬI: Tên đối tác/sếp/KTS/bạn đã gửi thông tin.
+4. NỘI DUNG CỤ THỂ THẾ NÀO:
+   - Tóm tắt chi tiết, rõ ràng nội dung thông tin được gửi.
+   - BẮT BUỘC chỉ rõ trạng thái là "Đã chốt" (Approved / Thống nhất) hay "Mới chỉ là đề xuất" (Proposed / Đang bàn thảo).
+   - Tên tệp hoặc ảnh đính kèm (nếu có).
+   - Trích dẫn câu nói quan trọng chứng minh.
+5. LINK/NÚT NHẢY VÀO TOPIC: Link trực tiếp mở đúng tin nhắn đó trong Topic.
 
-BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON HỢP LỆ VỚI CẤU TRÚC SAU:
+BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON HỢP LỆ THEO SCHEMA SAU:
 {
   "found": true hoặc false,
-  "summary": "Tóm tắt ngắn gọn nội dung trả lời cho câu hỏi",
+  "summary": "Tóm tắt chi tiết và trả lời trực tiếp nội dung cụ thể",
   "status": "Đã chốt" hoặc "Mới chỉ là đề xuất" hoặc "Đang trao đổi" hoặc "Chưa có thông tin",
+  "chat_title": "Tên nhóm gửi tin",
+  "topic_name": "Tên topic gửi tin",
   "sender_name": "Tên người gửi tin nhắn nguồn",
-  "date_formatted": "Ngày giờ cụ thể của tin nhắn nguồn",
+  "date_formatted": "Ngày giờ cụ thể (VD: 16:45 ngày 17/11/2026)",
   "message_id": 123,
-  "topic_name": "Tên topic nếu có",
   "deep_link": "https://t.me/...",
   "file_name": "Tên file đính kèm nếu có",
   "evidence_quote": "Câu trích dẫn ngắn từ tin nhắn gốc chứng minh",
   "additional_sources": [
     {
       "message_id": 101,
-      "sender_name": "...",
+      "chat_title": "Tên nhóm",
+      "topic_name": "Tên topic",
+      "sender_name": "Tên người gửi",
+      "date_formatted": "Thời gian",
       "role": "Đề xuất ban đầu",
       "deep_link": "https://t.me/..."
     }
@@ -124,10 +135,10 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON HỢP LỆ VỚI CẤU TRÚC SAU:
 
 Nếu không tìm thấy thông tin nào liên quan, đặt "found": false, "summary": "Không tìm thấy thông tin liên quan trong các tin nhắn gần đây.", "status": "Chưa có thông tin".`;
 
-    const userPrompt = `Dưới đây là danh sách các tin nhắn đã ghi nhận trong nhóm:
+    const userPrompt = `Dưới đây là danh sách các tin nhắn đã ghi nhận:
 ${formattedHistory}
 
-CÂU HỎI CỦA NGƯỜI DÙNG:
+CÂU HỎI TRUY VẤN CỦA NGƯỜI DÙNG:
 "${question}"
 
 Hãy phân tích và trả về đúng định dạng JSON yêu cầu.`;
@@ -135,12 +146,10 @@ Hãy phân tích và trả về đúng định dạng JSON yêu cầu.`;
     try {
       const responseText = await this.callGemini(userPrompt, systemInstruction);
       
-      // Parse JSON
       let result = null;
       try {
         result = JSON.parse(responseText);
       } catch (jsonErr) {
-        // Cố gắng lọc regex JSON
         const match = responseText.match(/\{[\s\S]*\}/);
         if (match) {
           result = JSON.parse(match[0]);
@@ -149,21 +158,33 @@ Hãy phân tích và trả về đúng định dạng JSON yêu cầu.`;
         }
       }
 
-      // Đảm bảo deep_link luôn chính xác nếu message_id khớp với tin nhắn trong DB
+      // Đối chiếu và hoàn thiện metadata từ database
       if (result && result.message_id) {
         const foundMsg = messages.find(m => m.message_id === Number(result.message_id));
         if (foundMsg) {
-          if (!result.deep_link || result.deep_link === '') {
-            result.deep_link = foundMsg.deep_link;
-          }
-          if (!result.sender_name) {
-            result.sender_name = foundMsg.sender_name;
-          }
-          if (!result.date_formatted) {
-            result.date_formatted = foundMsg.date_formatted;
-          }
+          result.chat_title = foundMsg.chat_title || result.chat_title;
+          result.topic_name = foundMsg.topic_name || result.topic_name;
+          result.sender_name = foundMsg.sender_name || result.sender_name;
+          result.date_formatted = foundMsg.date_formatted || result.date_formatted;
+          result.deep_link = foundMsg.deep_link || result.deep_link;
           if (foundMsg.file_name && !result.file_name) {
             result.file_name = foundMsg.file_name;
+          }
+        }
+      }
+
+      // Bổ sung link cho các nguồn liên quan
+      if (result && Array.isArray(result.additional_sources)) {
+        for (const src of result.additional_sources) {
+          if (src.message_id) {
+            const addMsg = messages.find(m => m.message_id === Number(src.message_id));
+            if (addMsg) {
+              src.chat_title = addMsg.chat_title || src.chat_title;
+              src.topic_name = addMsg.topic_name || src.topic_name;
+              src.date_formatted = addMsg.date_formatted || src.date_formatted;
+              src.deep_link = addMsg.deep_link || src.deep_link;
+              src.sender_name = addMsg.sender_name || src.sender_name;
+            }
           }
         }
       }
@@ -171,7 +192,6 @@ Hãy phân tích và trả về đúng định dạng JSON yêu cầu.`;
       return result;
     } catch (err) {
       console.error('Lỗi phân tích AI Gemini:', err);
-      // Fallback tìm kiếm từ khóa thủ công nếu AI gặp sự cố
       return this.fallbackKeywordSearch(question, messages);
     }
   }
@@ -184,7 +204,7 @@ Hãy phân tích và trả về đúng định dạng JSON yêu cầu.`;
     let maxScore = 0;
 
     for (const m of messages) {
-      const textLower = (m.text + ' ' + (m.file_name || '')).toLowerCase();
+      const textLower = (m.text + ' ' + (m.file_name || '') + ' ' + (m.topic_name || '')).toLowerCase();
       let score = 0;
       for (const kw of keywords) {
         if (textLower.includes(kw)) score += 1;
@@ -201,10 +221,11 @@ Hãy phân tích và trả về đúng định dạng JSON yêu cầu.`;
         found: true,
         summary: bestMatch.text,
         status: isChot ? 'Đã chốt' : 'Mới chỉ là đề xuất / trao đổi',
+        chat_title: bestMatch.chat_title,
+        topic_name: bestMatch.topic_name,
         sender_name: bestMatch.sender_name,
         date_formatted: bestMatch.date_formatted,
         message_id: bestMatch.message_id,
-        topic_name: bestMatch.topic_name,
         deep_link: bestMatch.deep_link,
         file_name: bestMatch.file_name,
         evidence_quote: bestMatch.text
@@ -215,6 +236,8 @@ Hãy phân tích và trả về đúng định dạng JSON yêu cầu.`;
       found: false,
       summary: 'Không tìm thấy thông tin phù hợp với từ khóa trong lịch sử tin nhắn.',
       status: 'Chưa có thông tin',
+      chat_title: 'Không có',
+      topic_name: 'Không có',
       sender_name: 'Hệ thống',
       date_formatted: 'Không có',
       deep_link: null
