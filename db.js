@@ -25,9 +25,14 @@ class MessageDatabase {
       if (fs.existsSync(DB_FILE)) {
         const raw = fs.readFileSync(DB_FILE, 'utf8');
         const parsed = JSON.parse(raw);
-        // LỌC BỎ HOÀN TOÀN TẤT CẢ DỮ LIỆU SEED MẪU GIẢ (is_seed: true hoặc id bắt đầu bằng seed_)
-        this.messages = parsed.filter(m => !m.is_seed && !String(m.id).startsWith('seed_'));
-        console.log(`📂 [Database] Đã tải ${this.messages.length} tin nhắn thực tế từ messages.json`);
+        // CHỈ GIỮ LẠI TIN NHẮN TỪ NHÓM/SUPERGROUP/CHANNEL
+        // LOẠI BỎ 100% TIN NHẮN TỪ CHAT RIÊNG (private) VÀ SEED DATA CŨ
+        this.messages = parsed.filter(m => 
+          !m.is_seed && 
+          !String(m.id).startsWith('seed_') &&
+          m.chat_type !== 'private'
+        );
+        console.log(`📂 [Database] Đã tải ${this.messages.length} tin nhắn nhóm thực tế từ messages.json`);
       } else {
         this.messages = [];
         this.saveImmediate();
@@ -43,7 +48,7 @@ class MessageDatabase {
     const key = `${chatId}_${threadId}`;
     this.topics[key] = name.trim();
 
-    // Cập nhật lại tên topic cho các tin nhắn đã lưu trước đó trong thread này
+    // Cập nhật tên topic cho các tin nhắn trong topic này
     for (const m of this.messages) {
       if (String(m.chat_id) === String(chatId) && String(m.message_thread_id) === String(threadId)) {
         m.topic_name = name.trim();
@@ -74,12 +79,12 @@ class MessageDatabase {
   }
 
   /**
-   * Tạo Deep Link chuẩn 100% của Telegram để nhảy vào đúng tin nhắn trong Topic
+   * Tạo Deep Link chuẩn 100% của Telegram để mở đúng tin nhắn trong Topic của Nhóm
    */
   buildDeepLink(chat, messageId, threadId) {
     if (!chat || !messageId) return '';
 
-    // Trường hợp 1: Nhóm công khai có username (@nhom_du_an)
+    // Nhóm công khai có username (@ten_nhom)
     if (chat.username) {
       if (threadId && Number(threadId) !== Number(messageId)) {
         return `https://t.me/${chat.username}/${threadId}/${messageId}`;
@@ -87,11 +92,11 @@ class MessageDatabase {
       return `https://t.me/${chat.username}/${messageId}`;
     }
 
-    // Trường hợp 2: Supergroup riêng tư có ID bắt đầu bằng -100
+    // Nhóm riêng tư / Supergroup có ID dạng -100xxxxxxxxxx
     const chatIdStr = String(chat.id || '');
     if (chatIdStr.startsWith('-100')) {
       const cleanId = chatIdStr.replace('-100', '');
-      // Format chuẩn Telegram Desktop & Mobile cho tin nhắn trong Topic
+      // Link chuẩn mở đúng Topic và cuộn đến đúng tin nhắn trên Telegram Desktop & Mobile
       if (threadId && Number(threadId) !== Number(messageId)) {
         return `https://t.me/c/${cleanId}/${threadId}/${messageId}`;
       }
@@ -102,40 +107,35 @@ class MessageDatabase {
   }
 
   addMessage(ctxMsg) {
-    if (!ctxMsg) return null;
+    if (!ctxMsg || !ctxMsg.chat) return null;
 
     const chat = ctxMsg.chat;
+
+    // TUYỆT ĐỐI KHÔNG LƯU TIN NHẮN TỪ CHAT RIÊNG (DM) VÀO CƠ SỞ DỮ LIỆU
+    if (chat.type === 'private') {
+      return null;
+    }
+
     const from = ctxMsg.from || {};
     const messageId = ctxMsg.message_id;
     const threadId = ctxMsg.message_thread_id || null;
 
-    // Bỏ qua tin nhắn trong chat riêng nếu là câu hỏi tra cứu
-    if (chat.type === 'private' && (ctxMsg.text?.startsWith('/') || ctxMsg.text?.length > 100)) {
-      // Tin nhắn tra cứu không cần lưu vào kho dữ liệu dự án
-    }
-
-    // Nhận diện tên Topic
+    // Lấy tên topic
     let topicName = this.getTopicName(chat.id, threadId);
 
-    // 1. Từ sự kiện tạo Topic mới
     if (ctxMsg.forum_topic_created?.name) {
       topicName = ctxMsg.forum_topic_created.name;
       this.saveTopicName(chat.id, messageId, topicName);
-    } 
-    // 2. Từ sự kiện đổi tên Topic
-    else if (ctxMsg.forum_topic_edited?.name) {
+    } else if (ctxMsg.forum_topic_edited?.name) {
       topicName = ctxMsg.forum_topic_edited.name;
       this.saveTopicName(chat.id, threadId || messageId, topicName);
-    }
-    // 3. Từ reply_to_message có chứa forum_topic_created
-    else if (ctxMsg.reply_to_message?.forum_topic_created?.name) {
+    } else if (ctxMsg.reply_to_message?.forum_topic_created?.name) {
       topicName = ctxMsg.reply_to_message.forum_topic_created.name;
       this.saveTopicName(chat.id, threadId, topicName);
     }
 
-    // Xác định tên người gửi
     let senderName = [from.first_name, from.last_name].filter(Boolean).join(' ').trim();
-    if (!senderName) senderName = from.username ? `@${from.username}` : (chat.title || 'Người dùng Telegram');
+    if (!senderName) senderName = from.username ? `@${from.username}` : (chat.title || 'Thành viên');
 
     let text = ctxMsg.text || ctxMsg.caption || '';
 
@@ -163,17 +163,15 @@ class MessageDatabase {
       if (!text) text = '[Tin nhắn thoại]';
     }
 
-    // Bỏ qua tin nhắn không có nội dung và không có media (ví dụ service messages khác)
     if (!text && !hasMedia) return null;
 
-    // Tạo link nhảy chính xác vào Topic
     const deepLink = this.buildDeepLink(chat, messageId, threadId);
     const dateFormatted = this.formatDateVN((ctxMsg.date || Math.floor(Date.now() / 1000)) * 1000);
 
     const record = {
       id: `${chat.id}_${messageId}`,
       chat_id: chat.id,
-      chat_title: chat.title || 'Tin nhắn riêng',
+      chat_title: chat.title || 'Nhóm làm việc',
       chat_username: chat.username || null,
       chat_type: chat.type,
       message_id: messageId,
@@ -199,20 +197,43 @@ class MessageDatabase {
       this.messages.push(record);
     }
 
-    if (this.messages.length > 3000) {
-      this.messages = this.messages.slice(this.messages.length - 3000);
+    if (this.messages.length > 5000) {
+      this.messages = this.messages.slice(this.messages.length - 5000);
     }
 
     this.saveDebounced();
     return record;
   }
 
-  getRecentMessages(chatId = null, limit = 150) {
-    let pool = this.messages.filter(m => !m.is_seed);
+  /**
+   * Tìm kiếm chính xác 100% tất cả các tin nhắn chứa ĐỦ các hashtag yêu cầu
+   */
+  searchByHashtags(hashtags = [], chatId = null) {
+    if (!hashtags || hashtags.length === 0) return [];
+
+    const cleanTags = hashtags.map(t => {
+      let clean = t.trim().toLowerCase();
+      if (!clean.startsWith('#')) clean = `#${clean}`;
+      return clean;
+    });
+
+    let pool = this.messages;
     if (chatId) {
       pool = pool.filter(m => String(m.chat_id) === String(chatId));
     }
-    return pool.slice(-limit);
+
+    const matched = pool.filter(m => {
+      const fullText = (m.text + ' ' + (m.file_name || '')).toLowerCase();
+      // Bắt buộc tin nhắn phải chứa TẤT CẢ các hashtag yêu cầu
+      return cleanTags.every(tag => {
+        const rawWord = tag.replace(/^#/, '');
+        // Kiểm tra khớp #hashtag hoặc từ khóa
+        return fullText.includes(tag) || fullText.includes(`#${rawWord}`);
+      });
+    });
+
+    // Sắp xếp tin nhắn mới nhất lên trước
+    return matched.sort((a, b) => (b.message_id || 0) - (a.message_id || 0));
   }
 
   saveDebounced() {
