@@ -38,7 +38,7 @@ async function pingKeepAlive() {
     lastPingTime = Date.now();
     if (res.ok) {
       lastPingStatus = `200 OK (${ms}ms)`;
-      console.log(`💓 [Keep-Alive Ping] 200 OK (${ms}ms) lúc ${new Date().toLocaleTimeString('vi-VN')} - Bot hoạt động 24/7`);
+      console.log(`💓 [Keep-Alive Ping] 200 OK (${ms}ms) lúc ${new Date().toLocaleTimeString('vi-VN')} - Duy trì 24/7`);
     } else {
       lastPingStatus = `${res.status} (${ms}ms)`;
       console.warn(`⚠️ [Keep-Alive Ping Warning] Status: ${res.status}`);
@@ -66,14 +66,12 @@ const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
 
-  // Webhook tiếp nhận tin nhắn từ Telegram
   if (req.method === 'POST' && (pathname === '/webhook' || pathname === `/${token}` || pathname === '/')) {
     if (webhookHandler) {
       return webhookHandler(req, res);
     }
   }
 
-  // Health check endpoint cho Render
   if (pathname === '/health' || pathname === '/ping') {
     const stats = db.getStats();
     res.writeHead(200, {
@@ -89,11 +87,11 @@ const server = http.createServer(async (req, res) => {
       lastPingStatus,
       messagesIndexed: stats.total,
       chatsMonitored: stats.chats,
-      mediaCount: stats.withMedia
+      mediaCount: stats.withMedia,
+      topicsCount: stats.topicsCount
     }));
   }
 
-  // Giao diện Web trạng thái thân thiện
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   const stats = db.getStats();
   return res.end(`
@@ -118,22 +116,24 @@ const server = http.createServer(async (req, res) => {
 <body>
   <div class="card">
     <h1>🤖 Nexus Smart Q&A Bot</h1>
-    <p style="color: #94a3b8; margin: 0 0 15px 0;">Trợ lý Hỏi đáp & Truy xuất nguồn gốc tin nhắn 24/7</p>
+    <p style="color: #94a3b8; margin: 0 0 15px 0;">Trợ lý Truy vấn Nguồn gốc Thông tin & Deep Link Topic 24/7</p>
     <div class="badge">● ONLINE 24/7 (${USE_WEBHOOK ? 'Webhook Mode' : 'Polling Mode'})</div>
 
     <div class="stats">
-      <div><div class="stat-val">${stats.total}</div><div class="stat-lbl">Tin nhắn đã ghi nhớ</div></div>
+      <div><div class="stat-val">${stats.total}</div><div class="stat-lbl">Tin nhắn đã lưu</div></div>
       <div><div class="stat-val">${stats.chats}</div><div class="stat-lbl">Nhóm / Hội thoại</div></div>
-      <div><div class="stat-val">${stats.withMedia}</div><div class="stat-lbl">Tệp / Ảnh đính kèm</div></div>
+      <div><div class="stat-val">${stats.topicsCount}</div><div class="stat-lbl">Topics theo dõi</div></div>
+      <div><div class="stat-val">${stats.withMedia}</div><div class="stat-lbl">Tệp / Bản vẽ</div></div>
     </div>
 
     <div class="features">
-      <div style="font-weight: 600; color: #38bdf8; margin-bottom: 10px;">✨ 4 Yếu tố xuất chuẩn:</div>
+      <div style="font-weight: 600; color: #38bdf8; margin-bottom: 10px;">✨ Định dạng truy vấn chuẩn xác:</div>
       <ul>
-        <li><strong>1. Nội dung tóm tắt:</strong> Đã chốt chính thức hay mới chỉ là đề xuất.</li>
-        <li><strong>2. Người gửi:</strong> Định danh rõ ràng sếp, đối tác hay KTS.</li>
-        <li><strong>3. Thời gian gửi:</strong> Giờ/ngày chính xác đến từng phút.</li>
-        <li><strong>4. Deep Link Topic:</strong> Nút nhảy thẳng về tin nhắn gốc trong đúng Topic để xem file/ảnh tức thì.</li>
+        <li><strong>📍 Gửi ở đâu:</strong> Nhóm nào, Topic nào cụ thể.</li>
+        <li><strong>⏰ Ngày nào:</strong> Ngày & giờ chi tiết của tin nhắn.</li>
+        <li><strong>👤 Người gửi:</strong> Ai đã gửi thông tin (sếp, đối tác, KTS).</li>
+        <li><strong>📝 Nội dung cụ thể:</strong> Tóm tắt chi tiết, tình trạng Đã chốt hay Đề xuất.</li>
+        <li><strong>🔗 Deep Link Topic:</strong> Nút bấm 1 chạm nhảy thẳng vào Topic mở xem lại file/ảnh.</li>
       </ul>
     </div>
   </div>
@@ -156,33 +156,45 @@ bot.use(async (ctx, next) => {
 // CÁC LỆNH CƠ BẢN (/start, /help, /stats)
 // ==========================================
 bot.command(['start', 'help'], async (ctx) => {
-  const guide = `🤖 *TRỢ LÝ HỎI ĐÁP & TRUY XUẤT NGUỒN GỐC (SMART Q&A + DEEP LINK)*
+  const isPrivate = ctx.chat.type === 'private';
 
-Xin chào *${ctx.from.first_name}*! Tôi là trợ lý chuyên ghi nhớ và truy xuất thông tin, tài liệu, quyết định trong các nhóm làm việc Telegram.
+  const guide = isPrivate ? `🤖 *TRỢ LÝ TRUY VẤN NGUỒN GỐC THÔNG TIN (SMART Q&A + DEEP LINK)*
 
-🎯 *CÁCH SỬ DỤNG TRUY XUẤT:*
-1️⃣ *Trong Nhóm/Topic:* Nhắc tên tôi kèm câu hỏi:
-👉 \`@${bot.botInfo.username} Có thông tin gì về loại cửa nhôm kính chưa?\`
-2️⃣ *Dùng lệnh /ask:*
-👉 \`/ask Hôm trước ai gửi file quy hoạch?\`
-👉 \`/ask Đã chốt phương án mặt bằng chưa hay mới đề xuất?\`
-3️⃣ *Trả lời tin nhắn:* Reply trực tiếp tin nhắn của tôi.
-4️⃣ *Chat riêng:* Nhắn tin trực tiếp câu hỏi cho tôi tại đây.
+Xin chào *${ctx.from.first_name}*! Đây là *khung chat riêng 1-1* của bạn với Bot.
 
-✨ *CẤU TRÚC TRẢ LỜI CHUẨN 4 YẾU TỐ:*
-1. 📌 *Nội dung tóm tắt* (Đã chốt hay mới chỉ là đề xuất).
-2. 👤 *Người gửi* (Tên đối tác / Sếp / Bạn).
-3. ⏰ *Thời gian gửi* (Ngày / giờ cụ thể).
-4. 🔗 *Nút Deep Link* nhảy thẳng về tin nhắn gốc trong đúng Topic để mở xem file / ảnh đính kèm ngay lập tức.`;
+Bạn có thể vào thẳng đây để hỏi và truy vấn bất kỳ thông tin nào đã được gửi lên các nhóm hoặc Topic. Tôi sẽ trả lời đầy đủ:
+• 📍 *Gửi ở đâu:* Nhóm nào, Topic nào cụ thể.
+• ⏰ *Gửi ngày nào:* Giờ và ngày gửi cụ thể.
+• 👤 *Ai là người gửi:* Sếp, đối tác hay KTS nào.
+• 📝 *Nội dung cụ thể thế nào:* Tóm tắt chi tiết & trạng thái (Đã chốt hay Đang đề xuất).
+• 🔗 *Deep Link Topic:* Nút bấm nhảy thẳng vào tin nhắn gốc trong đúng Topic để mở xem lại file hoặc ảnh đính kèm.
+
+💡 *Bạn có thể gõ câu hỏi ngay tại đây, ví dụ:*
+👉 \`Cửa nhôm kính gửi lên topic nào, ngày nào, ai gửi và nội dung cụ thể thế nào?\`
+👉 \`Hôm trước ai gửi file quy hoạch lên topic nào thế?\`
+👉 \`Mặt bằng tầng 1 và tầng 2 gửi ở đâu, đã chốt chưa?\`
+👉 \`Bản vẽ quy hoạch gửi ngày nào, ai gửi?\`` 
+: 
+`🤖 *TRỢ LÝ TRUY VẤN NGUỒN GỐC (SMART Q&A + DEEP LINK)*
+
+Xin chào cả nhà! Tôi đang theo dõi và ghi nhớ các trao đổi, bản vẽ và quyết định trong nhóm.
+
+🎯 *Cách kích hoạt truy vấn trong nhóm:*
+1️⃣ Nhắc tên tôi kèm câu hỏi:
+👉 \`@${bot.botInfo.username} Cửa nhôm kính gửi lên topic nào, ngày nào, ai gửi và nội dung thế nào?\`
+2️⃣ Dùng lệnh \`/ask\`:
+👉 \`/ask Hôm trước ai gửi file quy hoạch lên topic nào thế?\`
+3️⃣ Hoặc bạn có thể *nhắn tin riêng trực tiếp cho tôi* để tra cứu bảo mật mà không làm phiền nhóm!`;
 
   await ctx.reply(guide, { parse_mode: 'Markdown' });
 });
 
 bot.command('stats', async (ctx) => {
   const stats = db.getStats();
-  await ctx.reply(`📊 *THỐNG KÊ HỆ THỐNG GHI NHỚ:*
+  await ctx.reply(`📊 *THỐNG KÊ HỆ THỐNG TRUY VẤN:*
 - 💬 Tổng số tin nhắn đã lập chỉ mục: *${stats.total}*
 - 👥 Số nhóm / hội thoại: *${stats.chats}*
+- 🏷️ Số Topic được phân loại: *${stats.topicsCount}*
 - 📁 Số tin nhắn có tệp / hình ảnh: *${stats.withMedia}*
 - ⏱️ Thời gian hoạt động: *${Math.floor(process.uptime() / 60)} phút*`, { parse_mode: 'Markdown' });
 });
@@ -193,7 +205,7 @@ bot.command('stats', async (ctx) => {
 bot.command(['ask', 'hoi', 'tim', 'truyxuat'], async (ctx) => {
   const question = ctx.match?.trim();
   if (!question) {
-    return ctx.reply('💡 Bạn hãy nhập câu hỏi sau lệnh `/ask`. Ví dụ:\n`/ask Có thông tin gì về loại cửa nhôm kính chưa?`\n`/ask Ai đã gửi file quy hoạch?`', {
+    return ctx.reply('💡 Bạn hãy nhập câu hỏi sau lệnh `/ask`. Ví dụ:\n`/ask Cửa nhôm kính gửi lên topic nào, ngày nào, ai gửi và nội dung thế nào?`\n`/ask Ai đã gửi file quy hoạch?`', {
       parse_mode: 'Markdown'
     });
   }
@@ -202,91 +214,103 @@ bot.command(['ask', 'hoi', 'tim', 'truyxuat'], async (ctx) => {
 });
 
 // ==========================================
-// BẮT SỰ KIỆN MENTION @bot_name HOẶC CHAT RIÊNG
+// BẮT SỰ KIỆN CHAT RIÊNG (DM) HOẶC MENTION
 // ==========================================
 bot.on('message:text', async (ctx) => {
   const text = ctx.message.text.trim();
   const botUsername = bot.botInfo.username;
 
-  // 1. Kiểm tra nếu có mention @bot_username
+  // 1. Nếu nhắn tin trực tiếp trong Chat Riêng (DM) với Bot
+  if (ctx.chat.type === 'private' && !text.startsWith('/')) {
+    return handleUserQuestion(ctx, text);
+  }
+
+  // 2. Nếu có mention @bot_username trong nhóm
   const mentionPattern = new RegExp(`@${botUsername}\\b`, 'i');
   if (mentionPattern.test(text)) {
     const cleanedQuestion = text.replace(mentionPattern, '').trim();
     if (cleanedQuestion) {
       return handleUserQuestion(ctx, cleanedQuestion);
     } else {
-      return ctx.reply(`Dạ tôi nghe đây! Bạn hãy đặt câu hỏi cần truy xuất nhé (ví dụ: \`@${botUsername} Có thông tin gì về cửa nhôm kính chưa?\`)`, { parse_mode: 'Markdown' });
+      return ctx.reply(`Dạ tôi nghe đây! Bạn hãy nhập câu hỏi cần truy vấn (ví dụ: \`@${botUsername} Cửa nhôm kính gửi lên topic nào, ngày nào, nội dung thế nào?\`)`, { parse_mode: 'Markdown' });
     }
   }
 
-  // 2. Kiểm tra nếu người dùng reply tin nhắn của bot
+  // 3. Nếu reply tin nhắn của bot trong nhóm
   if (ctx.message.reply_to_message?.from?.id === bot.botInfo.id) {
     if (!text.startsWith('/')) {
       return handleUserQuestion(ctx, text);
     }
   }
-
-  // 3. Trong chat riêng (Private Chat)
-  if (ctx.chat.type === 'private' && !text.startsWith('/')) {
-    return handleUserQuestion(ctx, text);
-  }
 });
 
 // ==========================================
-// HÀM XỬ LÝ TRUY XUẤT THÔNG TIN VỚI GEMINI AI
+// HÀM XỬ LÝ TRUY VẤN NGUỒN GỐC THÔNG TIN
 // ==========================================
 async function handleUserQuestion(ctx, question) {
   try {
     await ctx.replyWithChatAction('typing');
 
-    // Lấy ngữ cảnh tin nhắn trong nhóm hiện tại (hoặc toàn bộ nếu chat riêng)
-    const messages = db.getRecentMessages(ctx.chat.type === 'private' ? null : ctx.chat.id, 80);
+    // Trong chat riêng: Lấy tin nhắn từ TẤT CẢ các nhóm để tra cứu toàn diện
+    // Trong nhóm: Ưu tiên tin nhắn của chính nhóm đó
+    const isPrivate = ctx.chat.type === 'private';
+    const messages = db.getRecentMessages(isPrivate ? null : ctx.chat.id, 150);
 
     // Gửi câu hỏi đến Gemini AI
     const aiResult = await ai.answerQuestion(question, messages);
 
-    // ĐỊNH DẠNG CÂU TRẢ LỜI CHUẨN 4 YẾU TỐ THEO YÊU CẦU NGƯỜI DÙNG:
-    // 1. Nội dung tóm tắt (Đã chốt hay mới chỉ là đề xuất)
-    // 2. Ai là người gửi (Tên đối tác/sếp/bạn)
-    // 3. Gửi vào lúc nào (Ngày/giờ cụ thể)
-    // 4. Nút/Link nhảy thẳng về tin nhắn gốc trong đúng Topic
-
+    // Xác định biểu tượng trạng thái
     let statusEmoji = '📌';
-    if (aiResult.status?.includes('chốt') || aiResult.status?.includes('Approved')) {
+    let statusText = aiResult.status || 'Chưa xác định';
+    if (statusText.includes('chốt') || statusText.includes('Approved')) {
       statusEmoji = '✅';
-    } else if (aiResult.status?.includes('đề xuất') || aiResult.status?.includes('Proposed')) {
+      statusText = 'ĐÃ CHỐT CHÍNH THỨC';
+    } else if (statusText.includes('đề xuất') || statusText.includes('Proposed')) {
       statusEmoji = '💡';
+      statusText = 'MỚI CHỈ LÀ ĐỀ XUẤT / ĐANG BÀN THẢO';
     }
 
-    let responseMsg = `🎯 *KẾT QUẢ TRUY XUẤT NGUỒN GỐC*\n\n`;
+    // XÂY DỰNG NỘI DUNG TRẢ LỜI ĐÁP ỨNG ĐẦY ĐỦ CÁC YẾU TỐ:
+    // 1. Gửi ở đâu (Nhóm nào, Topic nào)
+    // 2. Gửi ngày nào (Giờ & Ngày cụ thể)
+    // 3. Ai là người gửi (Tên đối tác/sếp/KTS/bạn)
+    // 4. Nội dung cụ thể thế nào (Tóm tắt + Trạng thái chốt/đề xuất + Tệp đính kèm + Trích dẫn)
+    // 5. Nút bấm nhảy thẳng vào Topic
 
-    // 1. Nội dung tóm tắt
-    responseMsg += `1️⃣ *Nội dung tóm tắt:*\n👉 ${aiResult.summary}\n${statusEmoji} *Trạng thái:* \`${aiResult.status || 'Chưa xác định'}\`\n\n`;
+    let responseMsg = `🎯 *KẾT QUẢ TRUY VẤN NGUỒN GỐC*\n\n`;
 
-    // 2. Người gửi
-    responseMsg += `2️⃣ *Người gửi:*\n👤 *${aiResult.sender_name || 'Không rõ danh tính'}*\n\n`;
+    // 1. GỬI Ở ĐÂU
+    responseMsg += `📍 *GỬI Ở ĐÂU:*\n`;
+    responseMsg += `🏢 *Nhóm:* \`${aiResult.chat_title || 'Nhóm Dự Án'}\`\n`;
+    responseMsg += `🏷️ *Topic:* \`${aiResult.topic_name || 'Kênh chung'}\`\n\n`;
 
-    // 3. Gửi vào lúc nào
-    responseMsg += `3️⃣ *Gửi vào lúc nào:*\n⏰ \`${aiResult.date_formatted || 'Không xác định'}\``;
-    if (aiResult.topic_name) {
-      responseMsg += ` _(Topic: ${aiResult.topic_name})_`;
-    }
-    responseMsg += `\n\n`;
+    // 2. GỬI NGÀY NÀO
+    responseMsg += `⏰ *GỬI NGÀY NÀO:*\n`;
+    responseMsg += `📅 \`${aiResult.date_formatted || 'Không xác định'}\`\n\n`;
 
-    // 4. Nguồn tin gốc & Bằng chứng
+    // 3. AI LÀ NGƯỜI GỬI
+    responseMsg += `👤 *AI LÀ NGƯỜI GỬI:*\n`;
+    responseMsg += `*${aiResult.sender_name || 'Không rõ danh tính'}*\n\n`;
+
+    // 4. NỘI DUNG CỤ THỂ THẾ NÀO
+    responseMsg += `📝 *NỘI DUNG CỤ THỂ THẾ NÀO:*\n`;
+    responseMsg += `👉 ${aiResult.summary}\n`;
+    responseMsg += `${statusEmoji} *Trạng thái:* \`${statusText}\`\n`;
+
     if (aiResult.file_name) {
       responseMsg += `📎 *Tệp đính kèm:* \`${aiResult.file_name}\`\n`;
     }
     if (aiResult.evidence_quote) {
-      responseMsg += `💬 *Trích dẫn:* _"${aiResult.evidence_quote}"_\n`;
+      responseMsg += `💬 *Trích dẫn gốc:* _"${aiResult.evidence_quote}"_\n`;
     }
 
     // Xây dựng Bàn phím nút Deep Link nhảy thẳng vào tin nhắn trong đúng Topic
     const keyboard = new InlineKeyboard();
-
     let hasLink = false;
+
     if (aiResult.deep_link && aiResult.deep_link.startsWith('http')) {
-      keyboard.url('👉 Mở tin nhắn gốc (Deep Link)', aiResult.deep_link);
+      const topicLabel = aiResult.topic_name ? ` [${aiResult.topic_name}]` : '';
+      keyboard.url(`👉 🚀 Mở tin nhắn gốc trong Topic${topicLabel}`, aiResult.deep_link);
       hasLink = true;
     }
 
@@ -294,7 +318,9 @@ async function handleUserQuestion(ctx, question) {
     if (aiResult.additional_sources && Array.isArray(aiResult.additional_sources)) {
       for (const src of aiResult.additional_sources) {
         if (src.deep_link && src.deep_link.startsWith('http')) {
-          keyboard.row().url(`🔗 ${src.role || 'Nguồn liên quan'} (${src.sender_name})`, src.deep_link);
+          const roleText = src.role || 'Xem tin nhắn liên quan';
+          const senderInfo = src.sender_name ? ` - ${src.sender_name}` : '';
+          keyboard.row().url(`🔗 ${roleText}${senderInfo}`, src.deep_link);
           hasLink = true;
         }
       }
@@ -307,16 +333,16 @@ async function handleUserQuestion(ctx, question) {
 
     if (hasLink) {
       replyOptions.reply_markup = keyboard;
-      responseMsg += `\n4️⃣ *Tin nhắn gốc:* Nhấn nút bên dưới để nhảy thẳng vào tin nhắn trong Topic 👇`;
+      responseMsg += `\n🔗 *XEM LẠI TIN NHẮN GỐC TRONG TOPIC:*\nNhấn nút bên dưới để nhảy thẳng vào đúng Topic trên Telegram 👇`;
     } else {
-      responseMsg += `\n4️⃣ *Tin nhắn gốc:* _(Tin nhắn nội bộ #${aiResult.message_id || 'N/A'})_`;
+      responseMsg += `\n🔗 *Tin nhắn gốc:* _(Mã tin nhắn #${aiResult.message_id || 'N/A'})_`;
     }
 
     await ctx.reply(responseMsg, replyOptions);
 
   } catch (err) {
-    console.error('Lỗi khi trả lời câu hỏi:', err);
-    await ctx.reply(`⚠️ Đã xảy ra lỗi trong quá trình phân tích dữ liệu: ${err.message}`, {
+    console.error('Lỗi khi truy vấn:', err);
+    await ctx.reply(`⚠️ Đã xảy ra lỗi khi truy vấn: ${err.message}`, {
       reply_to_message_id: ctx.message.message_id
     });
   }
@@ -359,7 +385,7 @@ function startPolling() {
       console.log(`✅ BOT ĐÃ HOẠT ĐỘNG THÀNH CÔNG!`);
       console.log(`- Tên Bot: ${info.first_name}`);
       console.log(`- Username: @${info.username}`);
-      console.log(`- Chế độ: POLLING`);
+      console.log(`- Chế độ: POLLING (Sẵn sàng nhận truy vấn riêng hoặc nhóm)`);
       console.log(`===========================================\n`);
     }
   }).catch(async (err) => {
