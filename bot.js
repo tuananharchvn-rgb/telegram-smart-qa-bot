@@ -72,6 +72,14 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (pathname === '/debug') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify({
+      messages: db.messages,
+      topics: db.topics
+    }, null, 2));
+  }
+
   if (pathname === '/health' || pathname === '/ping') {
     const stats = db.getStats();
     res.writeHead(200, {
