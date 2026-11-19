@@ -25,7 +25,7 @@ class GeminiAIService {
         const body = {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            temperature: 0.2,
+            temperature: 0.15,
             responseMimeType: 'application/json'
           }
         };
@@ -69,79 +69,83 @@ class GeminiAIService {
   }
 
   /**
-   * Truy xuất và phân tích câu trả lời từ lịch sử tin nhắn
+   * Truy xuất và phân tích câu trả lời từ lịch sử tin nhắn thực tế
    */
   async answerQuestion(question, messages = []) {
     if (!messages || messages.length === 0) {
       return {
         found: false,
-        summary: 'Chưa có dữ liệu tin nhắn nào trong các nhóm được ghi nhận.',
-        status: 'Chưa có thông tin',
-        chat_title: 'Không xác định',
-        topic_name: 'Không xác định',
-        sender_name: 'Hệ thống',
-        date_formatted: 'Chưa xác định',
-        deep_link: null
+        summary: 'Chưa ghi nhận tin nhắn hoặc tài liệu nào từ nhóm/topic thực tế của bạn.',
+        status: 'Chưa có dữ liệu',
+        chat_title: null,
+        topic_name: null,
+        sender_name: null,
+        date_formatted: null,
+        deep_link: null,
+        instruction: 'Hãy thêm bot vào nhóm dự án, cấp quyền Admin và gửi tin nhắn trao đổi vào Topic để bot ghi nhớ.'
       };
     }
 
-    // Định dạng lịch sử tin nhắn thành văn bản ngữ cảnh rõ ràng từng nhóm và topic
+    // Định dạng lịch sử tin nhắn thực tế
     const formattedHistory = messages.map((m) => {
-      return `[Tin #${m.message_id}] [Nhóm: ${m.chat_title}] [Topic: ${m.topic_name || 'Kênh chung'}] [Thời gian: ${m.date_formatted}] [Người gửi: ${m.sender_name}] [Tệp: ${m.file_name || (m.has_media ? 'Ảnh/Video' : 'Không')}]
+      return `[Tin ID: ${m.message_id}] [Nhóm: ${m.chat_title}] [Topic: ${m.topic_name || (m.message_thread_id ? 'Topic #' + m.message_thread_id : 'Chung')}] [Thời gian: ${m.date_formatted}] [Người gửi: ${m.sender_name}] [Tệp: ${m.file_name || (m.has_media ? m.media_type : 'Không')}]
 Nội dung: ${m.text}
-Link: ${m.deep_link || ''}
+Link gốc: ${m.deep_link || ''}
 ---`;
     }).join('\n');
 
     const systemInstruction = `Bạn là Trợ lý AI Hỏi đáp & Truy xuất nguồn gốc thông tin (Smart Q&A + Deep Link Traceability) chuyên nghiệp trong Telegram.
-Người dùng có thể hỏi bạn trong nhóm hoặc VÀO TRỰC TIẾP BOT CHAT 1-1 để truy vấn thông tin đã trao đổi ở các nhóm/topic.
+Người dùng đang hỏi bạn để truy xuất xem một thông tin/quyết định/tài liệu được gửi ở đâu, topic nào, ngày nào, ai gửi và nội dung cụ thể ra sao.
 
-KHI TRẢ LỜI, BẠN BẮT BUỘC PHẢI CHỈ RA RÕ CÁC YẾU TỐ:
-1. GỬI Ở ĐÂU: Tên nhóm/dự án cụ thể và Tên Topic cụ thể (ví dụ: Nhóm "Dự Án Biệt Thự Thảo Điền", Topic "Vật liệu & Hoàn thiện").
-2. GỬI NGÀY NÀO: Ngày giờ cụ thể của tin nhắn (ví dụ: "16:45 ngày 17/11/2026").
-3. AI LÀ NGƯỜI GỬI: Tên đối tác/sếp/KTS/bạn đã gửi thông tin.
-4. NỘI DUNG CỤ THỂ THẾ NÀO:
-   - Tóm tắt chi tiết, rõ ràng nội dung thông tin được gửi.
-   - BẮT BUỘC chỉ rõ trạng thái là "Đã chốt" (Approved / Thống nhất) hay "Mới chỉ là đề xuất" (Proposed / Đang bàn thảo).
-   - Tên tệp hoặc ảnh đính kèm (nếu có).
-   - Trích dẫn câu nói quan trọng chứng minh.
-5. LINK/NÚT NHẢY VÀO TOPIC: Link trực tiếp mở đúng tin nhắn đó trong Topic.
+QUY TẮC CỐT LÕI (TUYỆT ĐỐI TUÂN THỦ):
+1. TRẢ LỜI ĐÚNG SỰ THỰC DỰA TRÊN TIN NHẮN THỰC TẾ:
+   - Nếu tìm thấy tin nhắn liên quan, trích xuất chính xác ID tin nhắn, nhóm, topic, thời gian và link gốc.
+   - NẾU KHÔNG CÓ THÔNG TIN TRONG LỊCH SỬ TIN NHẮN ĐƯỢC CUNG CẤP, TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ BỊA ĐẶT RA DỰ ÁN HOẶC TÊN TOPIC KHÁC! Đặt "found": false.
 
-BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON HỢP LỆ THEO SCHEMA SAU:
+2. NỘI DUNG CỤ THỂ THẾ NÀO (KHÔNG ĐƯỢC BÊ NGUYÊN VĂN TOÀN BỘ TIN NHẮN SANG):
+   - Bạn phải phân tích, tổng hợp và tóm tắt thông minh bằng lời văn rõ ràng: Các bên đã trao đổi gì? Đã quyết định gì? Có yêu cầu gì cụ thể?
+   - Phân biệt rõ tình trạng:
+     • "Đã chốt" (Approved): nếu đã thống nhất phương án, duyệt, ký kết.
+     • "Mới chỉ là đề xuất" (Proposed): nếu mới gửi mẫu, báo giá, xin ý kiến, đang bàn thảo.
+   - Trích dẫn chứng minh: Chỉ trích dẫn 1 câu ngắn quan trọng nhất, không copy cả đoạn dài.
+
+3. XÁC ĐỊNH VỊ TRÍ VÀ THỜI GIAN:
+   - Gửi ở đâu: Tên Nhóm và Tên Topic cụ thể.
+   - Gửi ngày nào: Giờ và ngày cụ thể (định dạng HH:mm ngày DD/MM/YYYY).
+   - Ai là người gửi: Tên người gửi.
+
+BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON HỢP LỆ VỚI CẤU TRÚC SAU:
 {
   "found": true hoặc false,
-  "summary": "Tóm tắt chi tiết và trả lời trực tiếp nội dung cụ thể",
-  "status": "Đã chốt" hoặc "Mới chỉ là đề xuất" hoặc "Đang trao đổi" hoặc "Chưa có thông tin",
-  "chat_title": "Tên nhóm gửi tin",
-  "topic_name": "Tên topic gửi tin",
-  "sender_name": "Tên người gửi tin nhắn nguồn",
-  "date_formatted": "Ngày giờ cụ thể (VD: 16:45 ngày 17/11/2026)",
+  "summary": "Tóm lược súc tích, phân tích rõ ràng nội dung cụ thể của thông tin",
+  "status": "Đã chốt" hoặc "Mới chỉ là đề xuất" hoặc "Đang trao đổi",
+  "chat_title": "Tên nhóm thực tế",
+  "topic_name": "Tên topic thực tế",
+  "sender_name": "Tên người gửi",
+  "date_formatted": "Thời gian gửi cụ thể",
   "message_id": 123,
   "deep_link": "https://t.me/...",
-  "file_name": "Tên file đính kèm nếu có",
-  "evidence_quote": "Câu trích dẫn ngắn từ tin nhắn gốc chứng minh",
+  "file_name": "Tên tệp bản vẽ/ảnh nếu có",
+  "evidence_quote": "Một câu trích dẫn ngắn chứng minh mấu chốt",
   "additional_sources": [
     {
       "message_id": 101,
-      "chat_title": "Tên nhóm",
-      "topic_name": "Tên topic",
-      "sender_name": "Tên người gửi",
-      "date_formatted": "Thời gian",
       "role": "Đề xuất ban đầu",
-      "deep_link": "https://t.me/..."
+      "sender_name": "...",
+      "date_formatted": "...",
+      "topic_name": "...",
+      "deep_link": "..."
     }
   ]
-}
+}`;
 
-Nếu không tìm thấy thông tin nào liên quan, đặt "found": false, "summary": "Không tìm thấy thông tin liên quan trong các tin nhắn gần đây.", "status": "Chưa có thông tin".`;
-
-    const userPrompt = `Dưới đây là danh sách các tin nhắn đã ghi nhận:
+    const userPrompt = `Dưới đây là danh sách các tin nhắn THỰC TẾ đã ghi nhận:
 ${formattedHistory}
 
-CÂU HỎI TRUY VẤN CỦA NGƯỜI DÙNG:
+CÂU HỎI TRUY VẤN:
 "${question}"
 
-Hãy phân tích và trả về đúng định dạng JSON yêu cầu.`;
+Hãy phân tích kỹ và trả về kết quả JSON.`;
 
     try {
       const responseText = await this.callGemini(userPrompt, systemInstruction);
@@ -158,9 +162,9 @@ Hãy phân tích và trả về đúng định dạng JSON yêu cầu.`;
         }
       }
 
-      // Đối chiếu và hoàn thiện metadata từ database
+      // Đối chiếu với tin nhắn thực tế trong database để đảm bảo link và topic chính xác 100%
       if (result && result.message_id) {
-        const foundMsg = messages.find(m => m.message_id === Number(result.message_id));
+        const foundMsg = messages.find(m => Number(m.message_id) === Number(result.message_id));
         if (foundMsg) {
           result.chat_title = foundMsg.chat_title || result.chat_title;
           result.topic_name = foundMsg.topic_name || result.topic_name;
@@ -173,75 +177,15 @@ Hãy phân tích và trả về đúng định dạng JSON yêu cầu.`;
         }
       }
 
-      // Bổ sung link cho các nguồn liên quan
-      if (result && Array.isArray(result.additional_sources)) {
-        for (const src of result.additional_sources) {
-          if (src.message_id) {
-            const addMsg = messages.find(m => m.message_id === Number(src.message_id));
-            if (addMsg) {
-              src.chat_title = addMsg.chat_title || src.chat_title;
-              src.topic_name = addMsg.topic_name || src.topic_name;
-              src.date_formatted = addMsg.date_formatted || src.date_formatted;
-              src.deep_link = addMsg.deep_link || src.deep_link;
-              src.sender_name = addMsg.sender_name || src.sender_name;
-            }
-          }
-        }
-      }
-
       return result;
     } catch (err) {
-      console.error('Lỗi phân tích AI Gemini:', err);
-      return this.fallbackKeywordSearch(question, messages);
-    }
-  }
-
-  fallbackKeywordSearch(question, messages) {
-    const qLower = question.toLowerCase();
-    const keywords = qLower.split(/\s+/).filter(w => w.length > 2);
-
-    let bestMatch = null;
-    let maxScore = 0;
-
-    for (const m of messages) {
-      const textLower = (m.text + ' ' + (m.file_name || '') + ' ' + (m.topic_name || '')).toLowerCase();
-      let score = 0;
-      for (const kw of keywords) {
-        if (textLower.includes(kw)) score += 1;
-      }
-      if (score > maxScore) {
-        maxScore = score;
-        bestMatch = m;
-      }
-    }
-
-    if (bestMatch && maxScore > 0) {
-      const isChot = bestMatch.text.toLowerCase().includes('chốt') || bestMatch.text.toLowerCase().includes('thống nhất');
+      console.error('Lỗi Gemini:', err);
       return {
-        found: true,
-        summary: bestMatch.text,
-        status: isChot ? 'Đã chốt' : 'Mới chỉ là đề xuất / trao đổi',
-        chat_title: bestMatch.chat_title,
-        topic_name: bestMatch.topic_name,
-        sender_name: bestMatch.sender_name,
-        date_formatted: bestMatch.date_formatted,
-        message_id: bestMatch.message_id,
-        deep_link: bestMatch.deep_link,
-        file_name: bestMatch.file_name,
-        evidence_quote: bestMatch.text
+        found: false,
+        summary: 'Đã xảy ra sự cố khi phân tích câu hỏi với AI.',
+        status: 'Lỗi'
       };
     }
-
-    return {
-      found: false,
-      summary: 'Không tìm thấy thông tin phù hợp với từ khóa trong lịch sử tin nhắn.',
-      status: 'Chưa có thông tin',
-      chat_title: 'Không có',
-      topic_name: 'Không có',
-      sender_name: 'Hệ thống',
-      date_formatted: 'Không có',
-      deep_link: null
-    };
   }
 }
 
