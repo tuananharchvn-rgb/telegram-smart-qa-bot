@@ -24,141 +24,38 @@ class MessageDatabase {
     try {
       if (fs.existsSync(DB_FILE)) {
         const raw = fs.readFileSync(DB_FILE, 'utf8');
-        this.messages = JSON.parse(raw);
-        console.log(`📂 [Database] Đã tải ${this.messages.length} tin nhắn từ messages.json`);
+        const parsed = JSON.parse(raw);
+        // LỌC BỎ HOÀN TOÀN TẤT CẢ DỮ LIỆU SEED MẪU GIẢ (is_seed: true hoặc id bắt đầu bằng seed_)
+        this.messages = parsed.filter(m => !m.is_seed && !String(m.id).startsWith('seed_'));
+        console.log(`📂 [Database] Đã tải ${this.messages.length} tin nhắn thực tế từ messages.json`);
       } else {
-        console.log('📂 [Database] messages.json chưa tồn tại, khởi tạo dữ liệu mẫu thực tế...');
-        this.initSeedData();
+        this.messages = [];
+        this.saveImmediate();
       }
     } catch (err) {
       console.warn('⚠️ Lỗi đọc messages.json:', err.message);
-      this.initSeedData();
+      this.messages = [];
     }
-  }
-
-  initSeedData() {
-    this.topics = {
-      '-1002345678901_12': 'Vật liệu & Hoàn thiện',
-      '-1002345678901_5': 'Quy hoạch & Hồ sơ pháp lý',
-      '-1002345678901_8': 'Phương án Mặt bằng & Kiến trúc'
-    };
-
-    // Dữ liệu mẫu thực tế về dự án xây dựng & nội thất phục vụ test truy vấn ngay lập tức
-    this.messages = [
-      {
-        id: 'seed_1',
-        chat_id: -1002345678901,
-        chat_title: 'Dự Án Biệt Thự Vườn Thảo Điền',
-        chat_username: null,
-        message_id: 101,
-        message_thread_id: 12,
-        topic_name: 'Vật liệu & Hoàn thiện',
-        sender_id: 111222,
-        sender_name: 'KTS. Hoàng Nam (Chủ trì thiết kế)',
-        sender_username: 'hoangnam_arch',
-        date: new Date('2026-11-15T09:30:00+07:00').toISOString(),
-        date_formatted: '09:30 ngày 15/11/2026',
-        text: 'Em gửi đề xuất báo giá và mẫu loại cửa nhôm kính Xingfa hệ 55 kính dán an toàn 8.38mm cho khu vực phòng khách và các phòng ngủ mặt tiền.',
-        has_media: true,
-        media_type: 'document',
-        file_name: 'De_xuat_Cua_Nhom_Kinh_Xingfa_v1.pdf',
-        deep_link: 'https://t.me/c/2345678901/12/101',
-        is_seed: true
-      },
-      {
-        id: 'seed_2',
-        chat_id: -1002345678901,
-        chat_title: 'Dự Án Biệt Thự Vườn Thảo Điền',
-        chat_username: null,
-        message_id: 105,
-        message_thread_id: 12,
-        topic_name: 'Vật liệu & Hoàn thiện',
-        sender_id: 333444,
-        sender_name: 'Anh Tuấn (Chủ đầu tư)',
-        sender_username: 'tuan_investor',
-        date: new Date('2026-11-16T14:15:00+07:00').toISOString(),
-        date_formatted: '14:15 ngày 16/11/2026',
-        text: 'Cửa nhôm kính Xingfa hệ 55 anh thấy ổn, nhưng khu vực mặt tiền tầng 2 hướng tây nắng gắt nên anh muốn đổi sang nhôm Xingfa Class A kính hộp Low-E cách nhiệt.',
-        has_media: false,
-        media_type: null,
-        file_name: null,
-        deep_link: 'https://t.me/c/2345678901/12/105',
-        is_seed: true
-      },
-      {
-        id: 'seed_3',
-        chat_id: -1002345678901,
-        chat_title: 'Dự Án Biệt Thự Vườn Thảo Điền',
-        chat_username: null,
-        message_id: 112,
-        message_thread_id: 12,
-        topic_name: 'Vật liệu & Hoàn thiện',
-        sender_id: 555666,
-        sender_name: 'Nguyễn Văn Minh (Tổng thầu thi công)',
-        sender_username: 'minh_construction',
-        date: new Date('2026-11-17T16:45:00+07:00').toISOString(),
-        date_formatted: '16:45 ngày 17/11/2026',
-        text: 'ĐÃ CHỐT: Tất cả các bên thống nhất phương án: Toàn bộ mặt ngoài dùng nhôm Xingfa Class A kính hộp cách nhiệt Low-E 5-9-5mm theo ý kiến anh Tuấn. Đội thầu bắt đầu đặt phôi hôm nay.',
-        has_media: true,
-        media_type: 'photo',
-        file_name: 'Mau_Nhom_Xingfa_ClassA_Chot.jpg',
-        deep_link: 'https://t.me/c/2345678901/12/112',
-        is_seed: true
-      },
-      {
-        id: 'seed_4',
-        chat_id: -1002345678901,
-        chat_title: 'Dự Án Biệt Thự Vườn Thảo Điền',
-        chat_username: null,
-        message_id: 120,
-        message_thread_id: 5,
-        topic_name: 'Quy hoạch & Hồ sơ pháp lý',
-        sender_id: 777888,
-        sender_name: 'Thảo Vy (Quản lý dự án)',
-        sender_username: 'thaovy_pm',
-        date: new Date('2026-11-18T10:00:00+07:00').toISOString(),
-        date_formatted: '10:00 ngày 18/11/2026',
-        text: 'Em gửi cả nhà file bản vẽ quy hoạch 1/500 đã được phê duyệt chính thức kèm tọa độ ranh mốc cắm chỉ giới đường đỏ.',
-        has_media: true,
-        media_type: 'document',
-        file_name: 'Ban_ve_Quy_hoach_1-500_Phe_duyet_v2.pdf',
-        deep_link: 'https://t.me/c/2345678901/5/120',
-        is_seed: true
-      },
-      {
-        id: 'seed_5',
-        chat_id: -1002345678901,
-        chat_title: 'Dự Án Biệt Thự Vườn Thảo Điền',
-        chat_username: null,
-        message_id: 135,
-        message_thread_id: 8,
-        topic_name: 'Phương án Mặt bằng & Kiến trúc',
-        sender_id: 111222,
-        sender_name: 'KTS. Hoàng Nam (Chủ trì thiết kế)',
-        sender_username: 'hoangnam_arch',
-        date: new Date('2026-11-19T08:30:00+07:00').toISOString(),
-        date_formatted: '08:30 ngày 19/11/2026',
-        text: 'Bản vẽ mặt bằng bố trí nội thất tầng 1 và tầng 2 đã cập nhật thêm vị trí thang máy kính và bể bơi ngoài trời theo phản hồi hôm qua của anh Tuấn.',
-        has_media: true,
-        media_type: 'document',
-        file_name: 'Mat_bang_noi_that_T1_T2_v3.dwg',
-        deep_link: 'https://t.me/c/2345678901/8/135',
-        is_seed: true
-      }
-    ];
-    this.saveImmediate();
   }
 
   saveTopicName(chatId, threadId, name) {
     if (!chatId || !threadId || !name) return;
     const key = `${chatId}_${threadId}`;
-    this.topics[key] = name;
+    this.topics[key] = name.trim();
+
+    // Cập nhật lại tên topic cho các tin nhắn đã lưu trước đó trong thread này
     for (const m of this.messages) {
-      if (m.chat_id === chatId && m.message_thread_id === threadId) {
-        m.topic_name = name;
+      if (String(m.chat_id) === String(chatId) && String(m.message_thread_id) === String(threadId)) {
+        m.topic_name = name.trim();
       }
     }
     this.saveDebounced();
+  }
+
+  getTopicName(chatId, threadId) {
+    if (!threadId) return null;
+    const key = `${chatId}_${threadId}`;
+    return this.topics[key] || null;
   }
 
   formatDateVN(dateInput) {
@@ -176,20 +73,26 @@ class MessageDatabase {
     return `${hh}:${mm} ngày ${dd}/${MM}/${yyyy}`;
   }
 
+  /**
+   * Tạo Deep Link chuẩn 100% của Telegram để nhảy vào đúng tin nhắn trong Topic
+   */
   buildDeepLink(chat, messageId, threadId) {
     if (!chat || !messageId) return '';
 
+    // Trường hợp 1: Nhóm công khai có username (@nhom_du_an)
     if (chat.username) {
-      if (threadId && threadId !== messageId) {
+      if (threadId && Number(threadId) !== Number(messageId)) {
         return `https://t.me/${chat.username}/${threadId}/${messageId}`;
       }
       return `https://t.me/${chat.username}/${messageId}`;
     }
 
+    // Trường hợp 2: Supergroup riêng tư có ID bắt đầu bằng -100
     const chatIdStr = String(chat.id || '');
     if (chatIdStr.startsWith('-100')) {
       const cleanId = chatIdStr.replace('-100', '');
-      if (threadId && threadId !== messageId) {
+      // Format chuẩn Telegram Desktop & Mobile cho tin nhắn trong Topic
+      if (threadId && Number(threadId) !== Number(messageId)) {
         return `https://t.me/c/${cleanId}/${threadId}/${messageId}`;
       }
       return `https://t.me/c/${cleanId}/${messageId}`;
@@ -206,21 +109,33 @@ class MessageDatabase {
     const messageId = ctxMsg.message_id;
     const threadId = ctxMsg.message_thread_id || null;
 
-    // Ghi nhận tên Topic nếu có service message tạo/đổi tên topic
-    let topicName = this.topics[`${chat.id}_${threadId}`] || null;
+    // Bỏ qua tin nhắn trong chat riêng nếu là câu hỏi tra cứu
+    if (chat.type === 'private' && (ctxMsg.text?.startsWith('/') || ctxMsg.text?.length > 100)) {
+      // Tin nhắn tra cứu không cần lưu vào kho dữ liệu dự án
+    }
+
+    // Nhận diện tên Topic
+    let topicName = this.getTopicName(chat.id, threadId);
+
+    // 1. Từ sự kiện tạo Topic mới
     if (ctxMsg.forum_topic_created?.name) {
       topicName = ctxMsg.forum_topic_created.name;
-      this.saveTopicName(chat.id, threadId, topicName);
-    } else if (ctxMsg.forum_topic_edited?.name) {
+      this.saveTopicName(chat.id, messageId, topicName);
+    } 
+    // 2. Từ sự kiện đổi tên Topic
+    else if (ctxMsg.forum_topic_edited?.name) {
       topicName = ctxMsg.forum_topic_edited.name;
-      this.saveTopicName(chat.id, threadId, topicName);
-    } else if (ctxMsg.reply_to_message?.forum_topic_created?.name) {
+      this.saveTopicName(chat.id, threadId || messageId, topicName);
+    }
+    // 3. Từ reply_to_message có chứa forum_topic_created
+    else if (ctxMsg.reply_to_message?.forum_topic_created?.name) {
       topicName = ctxMsg.reply_to_message.forum_topic_created.name;
       this.saveTopicName(chat.id, threadId, topicName);
     }
 
+    // Xác định tên người gửi
     let senderName = [from.first_name, from.last_name].filter(Boolean).join(' ').trim();
-    if (!senderName) senderName = from.username ? `@${from.username}` : 'Thành viên ẩn danh';
+    if (!senderName) senderName = from.username ? `@${from.username}` : (chat.title || 'Người dùng Telegram');
 
     let text = ctxMsg.text || ctxMsg.caption || '';
 
@@ -248,15 +163,17 @@ class MessageDatabase {
       if (!text) text = '[Tin nhắn thoại]';
     }
 
+    // Bỏ qua tin nhắn không có nội dung và không có media (ví dụ service messages khác)
     if (!text && !hasMedia) return null;
 
+    // Tạo link nhảy chính xác vào Topic
     const deepLink = this.buildDeepLink(chat, messageId, threadId);
     const dateFormatted = this.formatDateVN((ctxMsg.date || Math.floor(Date.now() / 1000)) * 1000);
 
     const record = {
       id: `${chat.id}_${messageId}`,
       chat_id: chat.id,
-      chat_title: chat.title || 'Tin nhắn riêng / DM',
+      chat_title: chat.title || 'Tin nhắn riêng',
       chat_username: chat.username || null,
       chat_type: chat.type,
       message_id: messageId,
@@ -265,7 +182,7 @@ class MessageDatabase {
       sender_id: from.id,
       sender_name: senderName,
       sender_username: from.username ? `@${from.username}` : null,
-      date: new Date(ctxMsg.date * 1000).toISOString(),
+      date: new Date((ctxMsg.date || Math.floor(Date.now() / 1000)) * 1000).toISOString(),
       date_formatted: dateFormatted,
       text: text,
       has_media: hasMedia,
@@ -291,12 +208,10 @@ class MessageDatabase {
   }
 
   getRecentMessages(chatId = null, limit = 150) {
-    let pool = this.messages;
-    // Nếu chatId được truyền vào và không phải chat riêng, chỉ lọc tin nhắn của chat đó
+    let pool = this.messages.filter(m => !m.is_seed);
     if (chatId) {
-      pool = pool.filter(m => m.chat_id === chatId || m.is_seed);
+      pool = pool.filter(m => String(m.chat_id) === String(chatId));
     }
-    // Lấy tin nhắn mới nhất
     return pool.slice(-limit);
   }
 
@@ -304,7 +219,7 @@ class MessageDatabase {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
       this.saveImmediate();
-    }, 2000);
+    }, 1500);
   }
 
   saveImmediate() {
