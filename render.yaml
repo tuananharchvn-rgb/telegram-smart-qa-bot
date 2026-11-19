@@ -1,8 +1,7 @@
 services:
   - type: web
-    name: telegram-smart-qa-bot
+    name: nexus-qa-bot
     runtime: node
-    region: singapore
     plan: free
     buildCommand: npm install
     startCommand: node bot.js
